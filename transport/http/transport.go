@@ -235,14 +235,31 @@ func (o *transportOptions) newTransport() *Transport {
 	}
 }
 
+// func(network, address string) (net.Conn, error)
+type dialerWrapper struct {
+	dial      func(network, address string) (net.Conn, error)
+	transport *Transport
+}
+
+func (d *dialerWrapper) Dial(network, address string) (net.Conn, error) {
+	return d.dial(network, address)
+}
+
+// TODO: thread through buildHTTPClient function to thread through
+// Dialer wrapper needs to call a method of transport to send a notification to a peer
+// to resume peer management loop
+
 func buildHTTPClient(options *transportOptions) *http.Client {
 	return &http.Client{
 		Transport: &http.Transport{
 			// options lifted from https://golang.org/src/net/http/transport.go
 			Proxy: http.ProxyFromEnvironment,
-			Dial: (&net.Dialer{
-				Timeout:   30 * time.Second,
-				KeepAlive: options.keepAlive,
+			Dial: (&dialerWrapper{
+				dial: (&net.Dialer{
+					Timeout:   30 * time.Second,
+					KeepAlive: options.keepAlive,
+				}).Dial,
+				transport: nil, // TODO: figure out how to plumb Transport through.
 			}).Dial,
 			TLSHandshakeTimeout:   10 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
