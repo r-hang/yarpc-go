@@ -233,7 +233,7 @@ func (o *transportOptions) newTransport() *Transport {
 	}
 	// buildClient is only passed in for tests.
 	if o.buildClient == nil {
-		t.client = buildHTTPClient(t, o)
+		t.client = o.buildHTTPClient(t)
 	} else {
 		t.client = o.buildClient(o)
 	}
@@ -260,7 +260,7 @@ func (d *dialerWrapper) Dial(network, address string) (net.Conn, error) {
 // Dialer wrapper needs to call a method of transport to send a notification to a peer
 // to resume peer management loop
 
-func buildHTTPClient(transport *Transport, options *transportOptions) *http.Client {
+func (o *transportOptions) buildHTTPClient(transport *Transport) *http.Client {
 	return &http.Client{
 		Transport: &http.Transport{
 			// options lifted from https://golang.org/src/net/http/transport.go
@@ -268,18 +268,18 @@ func buildHTTPClient(transport *Transport, options *transportOptions) *http.Clie
 			Dial: (&dialerWrapper{
 				dial: (&net.Dialer{
 					Timeout:   30 * time.Second,
-					KeepAlive: options.keepAlive,
+					KeepAlive: o.keepAlive,
 				}).Dial,
 				transport: transport,
 			}).Dial,
 			TLSHandshakeTimeout:   10 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
-			MaxIdleConns:          options.maxIdleConns,
-			MaxIdleConnsPerHost:   options.maxIdleConnsPerHost,
-			IdleConnTimeout:       options.idleConnTimeout,
-			DisableKeepAlives:     options.disableKeepAlives,
-			DisableCompression:    options.disableCompression,
-			ResponseHeaderTimeout: options.responseHeaderTimeout,
+			MaxIdleConns:          o.maxIdleConns,
+			MaxIdleConnsPerHost:   o.maxIdleConnsPerHost,
+			IdleConnTimeout:       o.idleConnTimeout,
+			DisableKeepAlives:     o.disableKeepAlives,
+			DisableCompression:    o.disableCompression,
+			ResponseHeaderTimeout: o.responseHeaderTimeout,
 		},
 	}
 }
