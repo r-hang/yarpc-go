@@ -58,7 +58,6 @@ var defaultTransportOptions = transportOptions{
 	maxIdleConnsPerHost: 2,
 	connTimeout:         defaultConnTimeout,
 	connBackoffStrategy: backoff.DefaultExponential,
-	buildClient:         buildHTTPClient,
 	innocenceWindow:     defaultInnocenceWindow,
 	jitter:              rand.Int63n,
 }
@@ -222,9 +221,8 @@ func (o *transportOptions) newTransport() *Transport {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	return &Transport{
+	t := &Transport{
 		once:                lifecycle.NewOnce(),
-		client:              o.buildClient(o),
 		connTimeout:         o.connTimeout,
 		connBackoffStrategy: o.connBackoffStrategy,
 		innocenceWindow:     o.innocenceWindow,
@@ -233,6 +231,14 @@ func (o *transportOptions) newTransport() *Transport {
 		tracer:              o.tracer,
 		logger:              logger,
 	}
+	// buildClient is only passed in for tests.
+	if o.buildClient == nil {
+		t.client = buildHTTPClient(t, o)
+	} else {
+		t.client = o.buildClient(o)
+	}
+
+	return t
 }
 
 // func(network, address string) (net.Conn, error)
@@ -242,14 +248,19 @@ type dialerWrapper struct {
 }
 
 func (d *dialerWrapper) Dial(network, address string) (net.Conn, error) {
-	return d.dial(network, address)
+	conn, err := d.dial(network, address)
+	if conn == nil {
+		// TODO: check for specific errors?
+		d.transport.SetPeerSuspect(address)
+	}
+	return conn, err
 }
 
 // TODO: thread through buildHTTPClient function to thread through
 // Dialer wrapper needs to call a method of transport to send a notification to a peer
 // to resume peer management loop
 
-func buildHTTPClient(options *transportOptions) *http.Client {
+func buildHTTPClient(transport *Transport, options *transportOptions) *http.Client {
 	return &http.Client{
 		Transport: &http.Transport{
 			// options lifted from https://golang.org/src/net/http/transport.go
@@ -259,7 +270,7 @@ func buildHTTPClient(options *transportOptions) *http.Client {
 					Timeout:   30 * time.Second,
 					KeepAlive: options.keepAlive,
 				}).Dial,
-				transport: nil, // TODO: figure out how to plumb Transport through.
+				transport: transport,
 			}).Dial,
 			TLSHandshakeTimeout:   10 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
@@ -323,6 +334,21 @@ func (a *Transport) RetainPeer(pid peer.Identifier, sub peer.Subscriber) (peer.P
 	p := a.getOrCreatePeer(pid)
 	p.Subscribe(sub)
 	return p, nil
+}
+
+// SetPeerSuspect marks a peer as potentially down.
+func (a *Transport) SetPeerSuspect(addr string) error {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	p, ok := a.peers[addr]
+	if !ok {
+		// Peer has already been ejected.
+		return nil
+	}
+	p.OnSuspect()
+
+	return nil
 }
 
 // **NOTE** should only be called while the lock write mutex is acquired
