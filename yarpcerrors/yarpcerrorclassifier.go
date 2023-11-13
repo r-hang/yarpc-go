@@ -20,21 +20,25 @@
 
 package yarpcerrors
 
-type fault int
+// Fault is a error classication.
+type Fault int
 
 const (
-	UnknownFault fault = iota
+	// UnknownFault is an unknown fault.
+	UnknownFault Fault = iota
+	// ClientFault is a client fault.
 	ClientFault
+	// ServerFault is a server fault.
 	ServerFault
 )
 
 // GetFaultTypeFromError determines whether the error is a client, server or indeterminate fault based on a YARPC Code.
-func GetFaultTypeFromError(err error) fault {
+func GetFaultTypeFromError(err error) Fault {
 	return GetFaultTypeFromCode(FromError(err).Code())
 }
 
 // GetFaultTypeFromCode determines whether the status code is a client, server or indeterminate fault based on a YARPC Code.
-func GetFaultTypeFromCode(code Code) fault {
+func GetFaultTypeFromCode(code Code) Fault {
 	switch code {
 	case CodeCancelled,
 		CodeInvalidArgument,
